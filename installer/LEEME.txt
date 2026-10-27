@@ -1,0 +1,59 @@
+CONTINUADOR 1.3.2
+===============
+
+Continuador es una aplicación local para Windows 10/11 que permite programar
+un mensaje de continuación para una conversación de Codex o Claude Code.
+
+INSTALACIÓN
+
+1. Ejecuta Continuador-Setup.exe.
+2. Pulsa Instalar.
+3. Reinicia las sesiones abiertas de Codex y Claude Code para que detecten la
+   nueva integración.
+
+USO DESDE EL CHAT
+
+Escribe en Codex o Claude Code algo como:
+
+  Continúa hoy a las 8:30 p. m.
+  Continúa mañana a las 9.
+  Cambia la continuación para las 10.
+  Cancela la continuación.
+
+También puedes abrir Continuador desde el menú Inicio para programar y revisar
+tareas manualmente. La pestaña Conversaciones muestra las sesiones locales de
+Codex y Claude Code; selecciónala y pulsa "Programar en seleccionada".
+
+La lista de conversaciones permite buscar, filtrar, marcar favoritos, asignar
+nombres personalizados y realizar una prueba de envío visible.
+
+FUNCIONAMIENTO
+
+- La fecha y la hora se guardan en la zona horaria configurada en Windows.
+- Si faltan créditos o el cliente no está disponible, se reintenta cada diez
+  minutos durante un máximo de seis horas.
+- Si el equipo estaba dormido, la tarea se procesa al despertar mientras siga
+  dentro de esa ventana.
+- El Programador de tareas de Windows revisa pendientes cada diez minutos aunque
+  la ventana o el icono de bandeja se hayan cerrado.
+- No se guardan contraseñas ni claves de Codex o Claude.
+- El programa respeta los permisos ya configurados en cada cliente.
+
+DIAGNÓSTICO
+
+Abre Continuador y pulsa Diagnóstico. También puedes ejecutar:
+
+  Continuador.exe doctor
+
+Claude Code no estaba instalado en el equipo usado para construir este paquete.
+El adaptador se validó con un cliente simulado; usa Diagnóstico para confirmar
+que claude.exe aparece como encontrado en el equipo de destino.
+
+DESINSTALACIÓN
+
+Abre "Desinstalar Continuador" desde el menú Inicio. El desinstalador elimina
+la aplicación y sus integraciones, restaura copias de seguridad si existían y
+conserva los registros en AppData local.
+
+El ejecutable no tiene firma comercial. Windows SmartScreen puede mostrar una
+advertencia la primera vez que lo ejecutes.

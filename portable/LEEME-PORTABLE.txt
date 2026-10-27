@@ -1,0 +1,15 @@
+CONTINUADOR PORTÁTIL
+====================
+
+1. Extrae todo el ZIP en una carpeta permanente.
+2. Ejecuta Configurar-portable.cmd una vez para instalar las integraciones de
+   Codex y Claude Code apuntando a esa carpeta.
+3. Ejecuta Continuador.exe. Déjalo abierto en la bandeja del sistema.
+
+La edición portátil no se inicia sola con Windows. Para el funcionamiento más
+automático, usa Continuador-Setup.exe en lugar del ZIP portátil.
+
+No muevas la carpeta después de configurar las integraciones. Si la mueves,
+vuelve a ejecutar Configurar-portable.cmd.
+
+Consulta LEEME.txt para los comandos, reintentos y diagnóstico.

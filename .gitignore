@@ -1,0 +1,27 @@
+# Compilaciones y paquetes
+build/
+outputs/
+*.exe
+*.zip
+*.pdb
+
+# Datos locales y registros
+schedules.json
+continuador.log
+install-state.json
+*.log
+
+# Pruebas temporales
+test-output/
+release-check*/
+real-test-data*/
+detector-test/
+final-verify/
+
+# Archivos de editores y sistema
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
