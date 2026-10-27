@@ -6,6 +6,9 @@ CONTINUADOR PORTÁTIL
    Codex y Claude Code apuntando a esa carpeta.
 3. Ejecuta Continuador.exe. Déjalo abierto en la bandeja del sistema.
 
+ContinuadorWorker.exe es el componente silencioso usado por la edición instalada
+para el Programador de tareas; se incluye también en este paquete por compatibilidad.
+
 La edición portátil no se inicia sola con Windows. Para el funcionamiento más
 automático, usa Continuador-Setup.exe en lugar del ZIP portátil.
 
