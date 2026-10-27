@@ -13,8 +13,8 @@ using Microsoft.Win32;
 [assembly: AssemblyDescription("Instala Continuador para Codex y Claude Code")]
 [assembly: AssemblyCompany("Continuador")]
 [assembly: AssemblyProduct("Continuador")]
-[assembly: AssemblyVersion("1.3.2.0")]
-[assembly: AssemblyFileVersion("1.3.2.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyFileVersion("1.4.0.0")]
 
 namespace ContinuadorInstaller
 {
@@ -33,7 +33,7 @@ namespace ContinuadorInstaller
     internal static class SetupProgram
     {
         private const string ProductName = "Continuador";
-        private const string Version = "1.3.2";
+        private const string Version = "1.4.0";
         private const string ScheduledTaskName = "Continuador - Procesar pendientes";
         private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
 
@@ -101,6 +101,7 @@ namespace ContinuadorInstaller
             string user = GetUserRoot();
             string installDirectory = Path.Combine(user, "AppData", "Local", "Programs", ProductName);
             string applicationPath = Path.Combine(installDirectory, "Continuador.exe");
+            string workerPath = Path.Combine(installDirectory, "ContinuadorWorker.exe");
             string uninstallerPath = Path.Combine(installDirectory, "Desinstalar.exe");
             string statePath = Path.Combine(installDirectory, "install-state.json");
 
@@ -119,6 +120,7 @@ namespace ContinuadorInstaller
             StopInstalledApplication(installDirectory);
             Directory.CreateDirectory(installDirectory);
             WriteResourceBytes("Continuador.Payload.exe", applicationPath);
+            WriteResourceBytes("Continuador.WorkerPayload.exe", workerPath);
             File.Copy(Assembly.GetExecutingAssembly().Location, uninstallerPath, true);
             WriteResourceText("Continuador.Readme.txt", Path.Combine(installDirectory, "LEEME.txt"));
 
@@ -165,7 +167,7 @@ namespace ContinuadorInstaller
                     uninstall.SetValue("NoModify", 1, RegistryValueKind.DWord);
                     uninstall.SetValue("NoRepair", 1, RegistryValueKind.DWord);
                 }
-                if (RegisterScheduledTask(applicationPath, installDirectory))
+                if (RegisterScheduledTask(workerPath, installDirectory))
                 {
                     state.TaskName = ScheduledTaskName;
                 }
@@ -268,7 +270,10 @@ namespace ContinuadorInstaller
 
         private static void StopInstalledApplication(string installDirectory)
         {
-            foreach (Process process in Process.GetProcessesByName("Continuador"))
+            List<Process> processes = new List<Process>();
+            processes.AddRange(Process.GetProcessesByName("Continuador"));
+            processes.AddRange(Process.GetProcessesByName("ContinuadorWorker"));
+            foreach (Process process in processes)
             {
                 try
                 {
@@ -342,7 +347,7 @@ namespace ContinuadorInstaller
             }
         }
 
-        private static bool RegisterScheduledTask(string executable, string workingDirectory)
+        private static bool RegisterScheduledTask(string workerExecutable, string workingDirectory)
         {
             try
             {
@@ -368,8 +373,8 @@ namespace ContinuadorInstaller
                 trigger.Enabled = true;
 
                 dynamic action = task.Actions.Create(0);
-                action.Path = executable;
-                action.Arguments = "process-due";
+                action.Path = workerExecutable;
+                action.Arguments = string.Empty;
                 action.WorkingDirectory = workingDirectory;
                 folder.RegisterTaskDefinition(ScheduledTaskName, task, 6, null, null, 3, null);
                 return true;

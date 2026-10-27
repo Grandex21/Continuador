@@ -1,4 +1,4 @@
-CONTINUADOR 1.3.2
+CONTINUADOR 1.4.0
 ===============
 
 Continuador es una aplicación local para Windows 10/11 que permite programar
@@ -27,6 +27,12 @@ Codex y Claude Code; selecciónala y pulsa "Programar en seleccionada".
 La lista de conversaciones permite buscar, filtrar, marcar favoritos, asignar
 nombres personalizados y realizar una prueba de envío visible.
 
+ACTUALIZACIONES
+
+Continuador busca una versión nueva al iniciar y cada hora. También puedes usar
+"Buscar actualizaciones" en la barra lateral. Si hay una nueva, puede descargar
+y ejecutar el instalador oficial publicado en GitHub.
+
 FUNCIONAMIENTO
 
 - La fecha y la hora se guardan en la zona horaria configurada en Windows.
@@ -36,6 +42,8 @@ FUNCIONAMIENTO
   dentro de esa ventana.
 - El Programador de tareas de Windows revisa pendientes cada diez minutos aunque
   la ventana o el icono de bandeja se hayan cerrado.
+- Esa revisión usa ContinuadorWorker.exe, un proceso WinExe silencioso que no abre
+  CMD, PowerShell ni una ventana de consola.
 - No se guardan contraseñas ni claves de Codex o Claude.
 - El programa respeta los permisos ya configurados en cada cliente.
 
