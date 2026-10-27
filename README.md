@@ -5,11 +5,11 @@ Codex Desktop, Codex CLI y Claude Code.
 
 ## Descargar
 
-### [Descargar el instalador para Windows](https://github.com/Grandex21/Continuador/releases/latest/download/Continuador-Setup.exe)
+Los instaladores y archivos binarios se publican exclusivamente en la sección
+Releases de este repositorio.
 
-También puedes usar la [versión portátil](https://github.com/Grandex21/Continuador/releases/latest/download/Continuador-portable.zip), que no necesita instalación.
-
-Consulta [todas las versiones y archivos publicados](https://github.com/Grandex21/Continuador/releases/latest). Windows puede mostrar una advertencia de SmartScreen porque la aplicación todavía no tiene una firma comercial.
+Windows puede mostrar una advertencia de SmartScreen porque la aplicación todavía
+no tiene una firma comercial.
 
 La versión 1.4.0 carga las conversaciones en segundo plano para mantener la interfaz fluida,
 mejora la detección y el respaldo por ventana de Claude Code y comprueba automáticamente
