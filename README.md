@@ -3,6 +3,14 @@
 Aplicación local para Windows 10/11 que programa mensajes de continuación en
 Codex Desktop, Codex CLI y Claude Code.
 
+## Descargar
+
+### [Descargar el instalador para Windows](https://github.com/Grandex21/Continuador/releases/latest/download/Continuador-Setup.exe)
+
+También puedes usar la [versión portátil](https://github.com/Grandex21/Continuador/releases/latest/download/Continuador-portable.zip), que no necesita instalación.
+
+Consulta [todas las versiones y archivos publicados](https://github.com/Grandex21/Continuador/releases/latest). Windows puede mostrar una advertencia de SmartScreen porque la aplicación todavía no tiene una firma comercial.
+
 La versión 1.3.2 incorpora una interfaz visual completamente renovada, títulos reales de los listados de Codex y Claude Code, además de búsqueda y filtros de conversaciones, favoritos,
 nombres personalizados, prueba de envío y revisión en segundo plano mediante
 el Programador de tareas de Windows.
