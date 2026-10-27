@@ -13,8 +13,8 @@ using Microsoft.Win32;
 [assembly: AssemblyDescription("Programa continuaciones en Codex y Claude Code")]
 [assembly: AssemblyCompany("Continuador")]
 [assembly: AssemblyProduct("Continuador")]
-[assembly: AssemblyVersion("1.3.2.0")]
-[assembly: AssemblyFileVersion("1.3.2.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyFileVersion("1.4.0.0")]
 
 namespace Continuador
 {
@@ -75,6 +75,20 @@ namespace Continuador
                     {
                         return ConversationJson(item);
                     }).ToList());
+                    return 0;
+                }
+                if (command == "check-update")
+                {
+                    UpdateInfo update = UpdateService.Check();
+                    WriteJson(new Dictionary<string, object>
+                    {
+                        { "current_version", AppConstants.Version },
+                        { "latest_version", update.Version },
+                        { "tag", update.Tag },
+                        { "available", update.IsNewer },
+                        { "release_url", update.ReleaseUrl },
+                        { "installer_url", update.InstallerUrl }
+                    });
                     return 0;
                 }
                 if (command == "process-due")

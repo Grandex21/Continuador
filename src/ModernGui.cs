@@ -155,8 +155,12 @@ namespace Continuador
         private readonly Button schedulesNav;
         private readonly Button conversationsNav;
         private readonly System.Windows.Forms.Timer refreshTimer;
+        private readonly System.Windows.Forms.Timer updateTimer;
         private List<ConversationRecord> conversations;
         private int activePage;
+        private int conversationLoading;
+        private int updateChecking;
+        private int updateInstalling;
 
         public ModernMainForm()
         {
@@ -196,17 +200,25 @@ namespace Continuador
                 if (activePage == 0) RefreshGrid();
             };
             refreshTimer.Start();
+            updateTimer = new System.Windows.Forms.Timer();
+            updateTimer.Interval = 60 * 60 * 1000;
+            updateTimer.Tick += delegate { CheckForUpdates(false); };
+            updateTimer.Start();
             Shown += delegate
             {
                 SetPage(0);
-                RefreshGrid();
                 RefreshConversations();
+                CheckForUpdates(false);
             };
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) refreshTimer.Dispose();
+            if (disposing)
+            {
+                refreshTimer.Dispose();
+                updateTimer.Dispose();
+            }
             base.Dispose(disposing);
         }
 
@@ -252,6 +264,8 @@ namespace Continuador
             doctor.SetBounds(12, 292, 200, 42);
             Button logs = NavButton("Abrir registros", delegate { OpenLogs(); });
             logs.SetBounds(12, 338, 200, 42);
+            Button updates = NavButton("Buscar actualizaciones", delegate { CheckForUpdates(true); });
+            updates.SetBounds(12, 384, 200, 42);
 
             Panel privacyHost = new Panel();
             privacyHost.Dock = DockStyle.Bottom;
@@ -284,6 +298,7 @@ namespace Continuador
             panel.Controls.Add(tools);
             panel.Controls.Add(doctor);
             panel.Controls.Add(logs);
+            panel.Controls.Add(updates);
             panel.Controls.Add(privacyHost);
             return panel;
         }
@@ -623,15 +638,41 @@ namespace Continuador
 
         private void RefreshConversations()
         {
-            try
+            if (Interlocked.CompareExchange(ref conversationLoading, 1, 0) != 0)
             {
-                conversations = ConversationCatalog.ListAll();
-                RenderConversations();
+                if (activePage == 1) footerStatus.Text = "Ya se están cargando las conversaciones...";
+                return;
             }
-            catch (Exception ex)
+            conversationMetric.Text = "Cargando...";
+            conversationGrid.Enabled = false;
+            if (activePage == 1) footerStatus.Text = "Leyendo conversaciones en segundo plano...";
+            ThreadPool.QueueUserWorkItem(delegate
             {
-                footerStatus.Text = "No se pudieron leer las conversaciones: " + ex.Message;
-            }
+                List<ConversationRecord> loaded = null;
+                Exception failure = null;
+                try { loaded = ConversationCatalog.ListAll(); }
+                catch (Exception ex) { failure = ex; }
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        try
+                        {
+                            conversationGrid.Enabled = true;
+                            if (failure != null)
+                            {
+                                conversationMetric.Text = "Error al cargar";
+                                footerStatus.Text = "No se pudieron leer las conversaciones: " + failure.Message;
+                                return;
+                            }
+                            conversations = loaded ?? new List<ConversationRecord>();
+                            RenderConversations();
+                        }
+                        finally { Interlocked.Exchange(ref conversationLoading, 0); }
+                    });
+                }
+                catch { Interlocked.Exchange(ref conversationLoading, 0); }
+            });
         }
 
         private void RenderConversations()
@@ -655,8 +696,10 @@ namespace Continuador
             }
             List<ConversationRecord> visible = filtered.OrderByDescending(delegate(ConversationRecord item) { return item.Favorite; })
                 .ThenByDescending(delegate(ConversationRecord item) { return item.LastActivityUtc; }).ToList();
+            List<ConversationRecord> displayed = visible.Take(1000).ToList();
+            conversationGrid.SuspendLayout();
             conversationGrid.Rows.Clear();
-            foreach (ConversationRecord item in visible)
+            foreach (ConversationRecord item in displayed)
             {
                 int index = conversationGrid.Rows.Add(item.Favorite ? "★" : string.Empty,
                     item.Client == "claude" ? "Claude" : "Codex", item.DisplayTitle,
@@ -665,9 +708,12 @@ namespace Continuador
                 conversationGrid.Rows[index].Tag = item;
                 if (selectedKey == item.Client + "|" + item.SessionId) conversationGrid.Rows[index].Selected = true;
             }
+            conversationGrid.ResumeLayout();
             int codex = conversations.Count(delegate(ConversationRecord item) { return item.Client == "codex"; });
             int claude = conversations.Count(delegate(ConversationRecord item) { return item.Client == "claude"; });
-            conversationMetric.Text = visible.Count + " visibles de " + conversations.Count;
+            conversationMetric.Text = visible.Count > displayed.Count
+                ? displayed.Count + " mostradas de " + visible.Count + " filtradas"
+                : visible.Count + " visibles de " + conversations.Count;
             if (activePage == 1) footerStatus.Text = "Codex: " + codex + "  •  Claude Code: " + claude + "  •  Doble clic para programar";
         }
 
@@ -728,7 +774,8 @@ namespace Continuador
             }
             if (MessageBox.Show(this, "Se enviará un mensaje de prueba visible a:\r\n\r\n" + selected.DisplayTitle + "\r\n\r\n¿Continuar?", "Probar envío", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             ScheduleRecord test = ScheduleManager.Create(selected.Client, DateTimeOffset.Now,
-                "Prueba de Continuador: responde solamente CONEXIÓN OK.", selected.SessionId, selected.WorkingDirectory, new WindowSnapshot());
+                "Prueba de Continuador: responde solamente CONEXIÓN OK.", selected.SessionId, selected.WorkingDirectory,
+                selected.Client == "claude" ? NativeMethods.FindClaudeWindow(selected.WorkingDirectory) : new WindowSnapshot());
             footerStatus.Text = "Probando envío en segundo plano...";
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -797,6 +844,86 @@ namespace Continuador
                 Process.Start("notepad.exe", ProcessRunner.QuoteArgument(StateStore.TextLogPath));
             }
             catch (Exception ex) { MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        private void CheckForUpdates(bool manual)
+        {
+            if (Interlocked.CompareExchange(ref updateChecking, 1, 0) != 0)
+            {
+                if (manual) footerStatus.Text = "Ya se está buscando una actualización...";
+                return;
+            }
+            if (manual) footerStatus.Text = "Buscando actualizaciones en GitHub...";
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                UpdateInfo update = null;
+                Exception failure = null;
+                try { update = UpdateService.Check(); }
+                catch (Exception ex) { failure = ex; }
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        Interlocked.Exchange(ref updateChecking, 0);
+                        if (failure != null)
+                        {
+                            footerStatus.Text = "No se pudo comprobar la actualización.";
+                            if (manual) MessageBox.Show(this, failure.Message, "Actualizaciones", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+                        if (update == null || !update.IsNewer)
+                        {
+                            footerStatus.Text = "Continuador " + AppConstants.Version + " está actualizado.";
+                            if (manual) MessageBox.Show(this, "Ya tienes la versión más reciente: " + AppConstants.Version + ".", "Actualizaciones", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            return;
+                        }
+                        footerStatus.Text = "Nueva versión disponible: " + update.Version;
+                        if (!manual && !UpdateService.ShouldNotify(update.Version)) return;
+                        if (MessageBox.Show(this,
+                            "Hay una nueva versión de Continuador: " + update.Version + ".\r\n\r\n¿Quieres descargarla e instalarla ahora?",
+                            "Actualización disponible", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                        {
+                            DownloadAndInstallUpdate(update);
+                        }
+                    });
+                }
+                catch { Interlocked.Exchange(ref updateChecking, 0); }
+            });
+        }
+
+        private void DownloadAndInstallUpdate(UpdateInfo update)
+        {
+            if (Interlocked.CompareExchange(ref updateInstalling, 1, 0) != 0) return;
+            footerStatus.Text = "Descargando Continuador " + update.Version + "...";
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string installer = null;
+                Exception failure = null;
+                try { installer = UpdateService.DownloadInstaller(update); }
+                catch (Exception ex) { failure = ex; }
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        Interlocked.Exchange(ref updateInstalling, 0);
+                        if (failure != null)
+                        {
+                            footerStatus.Text = "No se pudo descargar la actualización.";
+                            MessageBox.Show(this, failure.Message, "Actualizaciones", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+                        footerStatus.Text = "Instalando la actualización...";
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = installer,
+                            Arguments = "/install-silent",
+                            UseShellExecute = true,
+                            WorkingDirectory = Path.GetDirectoryName(installer)
+                        });
+                    });
+                }
+                catch { Interlocked.Exchange(ref updateInstalling, 0); }
+            });
         }
 
         private string SelectedId()

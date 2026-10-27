@@ -13,14 +13,19 @@ namespace Continuador
     {
         private readonly NotifyIcon notifyIcon;
         private readonly System.Windows.Forms.Timer timer;
+        private readonly System.Windows.Forms.Timer updateTimer;
         private readonly Control dispatcher;
         private int processing;
+        private int checkingUpdates;
+        private ModernMainForm mainForm;
+        private string updateReleaseUrl;
 
         public TrayContext()
         {
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add("Abrir Continuador", null, delegate { OpenWindow(); });
             menu.Items.Add("Procesar ahora", null, delegate { ProcessNow(); });
+            menu.Items.Add("Buscar actualizaciones", null, delegate { CheckForUpdates(true); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Salir", null, delegate { ExitThread(); });
 
@@ -30,6 +35,13 @@ namespace Continuador
             notifyIcon.Visible = true;
             notifyIcon.ContextMenuStrip = menu;
             notifyIcon.DoubleClick += delegate { OpenWindow(); };
+            notifyIcon.BalloonTipClicked += delegate
+            {
+                if (!string.IsNullOrWhiteSpace(updateReleaseUrl))
+                {
+                    try { Process.Start(updateReleaseUrl); } catch { }
+                }
+            };
 
             dispatcher = new Control();
             dispatcher.CreateControl();
@@ -38,23 +50,81 @@ namespace Continuador
             timer.Interval = 15000;
             timer.Tick += delegate { ProcessNow(); };
             timer.Start();
+            updateTimer = new System.Windows.Forms.Timer();
+            updateTimer.Interval = 60 * 60 * 1000;
+            updateTimer.Tick += delegate { CheckForUpdates(false); };
+            updateTimer.Start();
             ProcessNow();
+            CheckForUpdates(false);
         }
 
         protected override void ExitThreadCore()
         {
             timer.Stop();
+            updateTimer.Stop();
             notifyIcon.Visible = false;
             notifyIcon.Dispose();
+            updateTimer.Dispose();
             dispatcher.Dispose();
             base.ExitThreadCore();
         }
 
         private void OpenWindow()
         {
-            ModernMainForm form = new ModernMainForm();
-            form.Show();
-            form.Activate();
+            if (mainForm == null || mainForm.IsDisposed)
+            {
+                mainForm = new ModernMainForm();
+                mainForm.FormClosed += delegate { mainForm = null; };
+                mainForm.Show();
+            }
+            if (mainForm.WindowState == FormWindowState.Minimized) mainForm.WindowState = FormWindowState.Normal;
+            mainForm.BringToFront();
+            mainForm.Activate();
+        }
+
+        private void CheckForUpdates(bool manual)
+        {
+            if (Interlocked.CompareExchange(ref checkingUpdates, 1, 0) != 0) return;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                UpdateInfo update = null;
+                Exception failure = null;
+                try { update = UpdateService.Check(); }
+                catch (Exception ex) { failure = ex; }
+                try
+                {
+                    dispatcher.BeginInvoke((MethodInvoker)delegate
+                    {
+                        Interlocked.Exchange(ref checkingUpdates, 0);
+                        if (failure != null)
+                        {
+                            if (manual)
+                            {
+                                notifyIcon.BalloonTipTitle = "No se pudo buscar actualizaciones";
+                                notifyIcon.BalloonTipText = failure.Message.Length > 240 ? failure.Message.Substring(0, 240) : failure.Message;
+                                notifyIcon.ShowBalloonTip(5000);
+                            }
+                            return;
+                        }
+                        if (update == null || !update.IsNewer)
+                        {
+                            if (manual)
+                            {
+                                notifyIcon.BalloonTipTitle = "Continuador está actualizado";
+                                notifyIcon.BalloonTipText = "Tienes la versión " + AppConstants.Version + ".";
+                                notifyIcon.ShowBalloonTip(4000);
+                            }
+                            return;
+                        }
+                        if (!manual && !UpdateService.ShouldNotify(update.Version)) return;
+                        updateReleaseUrl = update.ReleaseUrl;
+                        notifyIcon.BalloonTipTitle = "Actualización disponible";
+                        notifyIcon.BalloonTipText = "Continuador " + update.Version + " está disponible. Haz clic para abrir la descarga.";
+                        notifyIcon.ShowBalloonTip(8000);
+                    });
+                }
+                catch { Interlocked.Exchange(ref checkingUpdates, 0); }
+            });
         }
 
         private void ProcessNow()
@@ -423,7 +493,8 @@ namespace Continuador
             }
             ScheduleRecord test = ScheduleManager.Create(selected.Client, DateTimeOffset.Now,
                 "Prueba de Continuador: responde solamente CONEXIÓN OK.", selected.SessionId,
-                selected.WorkingDirectory, new WindowSnapshot());
+                selected.WorkingDirectory,
+                selected.Client == "claude" ? NativeMethods.FindClaudeWindow(selected.WorkingDirectory) : new WindowSnapshot());
             status.Text = "Probando envío en segundo plano...";
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -596,6 +667,7 @@ namespace Continuador
         private readonly TextBox message;
         private readonly TextBox session;
         private readonly TextBox cwd;
+        private readonly WindowSnapshot targetWindow;
 
         public ScheduleRecord CreatedRecord { get; private set; }
 
@@ -605,6 +677,9 @@ namespace Continuador
 
         public ScheduleDialog(ConversationRecord selectedConversation)
         {
+            targetWindow = selectedConversation != null && selectedConversation.Client == "claude"
+                ? NativeMethods.FindClaudeWindow(selectedConversation.WorkingDirectory)
+                : new WindowSnapshot();
             Text = "Nueva continuación";
             ModernUi.PrepareDialog(this);
             StartPosition = FormStartPosition.CenterParent;
@@ -704,7 +779,7 @@ namespace Continuador
                 {
                     throw new InvalidOperationException("Para programar manualmente Claude Code, escribe el ID de la sesión. Desde el chat se completa automáticamente.");
                 }
-                CreatedRecord = ScheduleManager.Create(client.Text, due, message.Text, sessionId, cwd.Text, new WindowSnapshot());
+                CreatedRecord = ScheduleManager.Create(client.Text, due, message.Text, sessionId, cwd.Text, targetWindow);
                 DialogResult = DialogResult.OK;
                 Close();
             }

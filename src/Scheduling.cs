@@ -348,6 +348,9 @@ namespace Continuador
         private static DeliveryResult DeliverClaude(ScheduleRecord record)
         {
             string executable = ExecutableFinder.FindClaude();
+            WindowSnapshot fallbackWindow = record.WindowHandle != 0
+                ? new WindowSnapshot { Handle = record.WindowHandle, Title = record.WindowTitle, ProcessName = record.WindowProcess }
+                : NativeMethods.FindClaudeWindow(record.WorkingDirectory);
             if (!string.IsNullOrEmpty(executable) && !string.IsNullOrWhiteSpace(record.SessionId))
             {
                 CommandResult resumed = ProcessRunner.Run(executable,
@@ -359,10 +362,10 @@ namespace Continuador
                 }
 
                 string output = resumed.CombinedOutput;
-                if (LooksLikeActiveSessionConflict(output) && record.WindowHandle != 0)
+                if (LooksLikeActiveSessionConflict(output) && fallbackWindow.Handle != 0)
                 {
                     string keyboardError;
-                    if (NativeMethods.SendTextToWindow(record.WindowHandle, record.Message, out keyboardError))
+                    if (NativeMethods.SendTextToWindow(fallbackWindow.Handle, record.Message, out keyboardError))
                     {
                         return Success("El mensaje se envió a la terminal activa de Claude Code.");
                     }
@@ -371,17 +374,24 @@ namespace Continuador
                 return Failure("claude --resume: " + TrimOutput(output), IsRetryable(output));
             }
 
-            if (record.WindowHandle != 0)
+            if (fallbackWindow.Handle != 0)
             {
                 string error;
-                if (NativeMethods.SendTextToWindow(record.WindowHandle, record.Message, out error))
+                if (NativeMethods.SendTextToWindow(fallbackWindow.Handle, record.Message, out error))
                 {
-                    return Success("El mensaje se envió a la ventana capturada de Claude Code.");
+                    return Success("El mensaje se envió a la ventana abierta de Claude Code.");
+                }
+                WindowSnapshot refreshed = NativeMethods.FindClaudeWindow(record.WorkingDirectory);
+                if (refreshed.Handle != 0 && refreshed.Handle != fallbackWindow.Handle &&
+                    NativeMethods.SendTextToWindow(refreshed.Handle, record.Message, out error))
+                {
+                    return Success("El mensaje se envió a la ventana detectada de Claude Code.");
                 }
                 return Failure("No se encontró Claude Code y falló el respaldo de teclado: " + error, true);
             }
 
-            return Failure("No se encontró Claude Code ni una ventana de respaldo.", true);
+            return Failure("No se encontró el comando claude ni una ventana abierta de Claude Code. " +
+                "Abre Claude Code o ejecuta 'claude doctor' para comprobar la instalación.", true);
         }
 
         private static bool IsRetryable(string output)

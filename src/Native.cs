@@ -16,6 +16,8 @@ namespace Continuador
         private const uint KEYEVENTF_UNICODE = 0x0004;
         private const ushort VK_RETURN = 0x0D;
 
+        private delegate bool EnumWindowsCallback(IntPtr hWnd, IntPtr parameter);
+
         [StructLayout(LayoutKind.Sequential)]
         private struct INPUT
         {
@@ -50,6 +52,12 @@ namespace Continuador
 
         [DllImport("user32.dll")]
         private static extern bool IsWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr parameter);
 
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int command);
@@ -98,6 +106,64 @@ namespace Continuador
             {
             }
             return snapshot;
+        }
+
+        public static WindowSnapshot FindClaudeWindow(string workingDirectory)
+        {
+            WindowSnapshot best = new WindowSnapshot();
+            int bestScore = 0;
+            string folderName = string.Empty;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(workingDirectory))
+                {
+                    folderName = new DirectoryInfo(workingDirectory).Name;
+                }
+            }
+            catch { }
+
+            try
+            {
+                int currentProcessId = Process.GetCurrentProcess().Id;
+                EnumWindows(delegate(IntPtr handle, IntPtr parameter)
+                {
+                    if (handle == IntPtr.Zero || !IsWindowVisible(handle)) return true;
+                    StringBuilder titleBuilder = new StringBuilder(1024);
+                    GetWindowText(handle, titleBuilder, titleBuilder.Capacity);
+                    string title = titleBuilder.ToString().Trim();
+                    if (title.Length == 0) return true;
+
+                    uint processId;
+                    GetWindowThreadProcessId(handle, out processId);
+                    if (processId == currentProcessId) return true;
+                    string processName = string.Empty;
+                    try { processName = Process.GetProcessById((int)processId).ProcessName; }
+                    catch { }
+
+                    int score = 0;
+                    if (processName.IndexOf("claude", StringComparison.OrdinalIgnoreCase) >= 0) score += 120;
+                    if (title.IndexOf("Claude Code", StringComparison.OrdinalIgnoreCase) >= 0) score += 100;
+                    else if (title.IndexOf("Claude", StringComparison.OrdinalIgnoreCase) >= 0) score += 80;
+                    bool terminal = processName.IndexOf("terminal", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        string.Equals(processName, "Code", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(processName, "Cursor", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(processName, "OpenConsole", StringComparison.OrdinalIgnoreCase);
+                    if (!string.IsNullOrWhiteSpace(folderName) && title.IndexOf(folderName, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        score += terminal ? 55 : 15;
+                    }
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best.Handle = handle.ToInt64();
+                        best.Title = title;
+                        best.ProcessName = processName;
+                    }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch { }
+            return best;
         }
 
         public static bool SendTextToWindow(long rawHandle, string text, out string error)
@@ -190,6 +256,16 @@ namespace Continuador
                 return overridden;
             }
 
+            try
+            {
+                AppState state = StateStore.Load();
+                if (state.Settings != null && File.Exists(state.Settings.ClaudeExecutable))
+                {
+                    return state.Settings.ClaudeExecutable;
+                }
+            }
+            catch { }
+
             string found = FindOnPath(new string[] { "claude.exe", "claude.cmd", "claude.bat" });
             if (!string.IsNullOrEmpty(found))
             {
@@ -200,7 +276,14 @@ namespace Continuador
             string[] candidates = new string[]
             {
                 Path.Combine(user, ".local", "bin", "claude.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "claude.cmd")
+                Path.Combine(user, ".local", "bin", "claude.cmd"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "claude.cmd"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "claude.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WinGet", "Links", "claude.exe"),
+                Path.Combine(user, "scoop", "shims", "claude.exe"),
+                Path.Combine(user, "scoop", "shims", "claude.cmd"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "chocolatey", "bin", "claude.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "chocolatey", "bin", "claude.cmd")
             };
             foreach (string candidate in candidates)
             {
@@ -209,7 +292,9 @@ namespace Continuador
                     return candidate;
                 }
             }
-            return null;
+            string localShare = Path.Combine(user, ".local", "share");
+            string recursive = FindNewestRecursive(localShare, "claude.exe");
+            return recursive;
         }
 
         private static string FindOnPath(string[] names)

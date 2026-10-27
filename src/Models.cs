@@ -6,7 +6,7 @@ namespace Continuador
     internal static class AppConstants
     {
         public const string ProductName = "Continuador";
-        public const string Version = "1.3.2";
+        public const string Version = "1.4.0";
         public const string DefaultMessage = "Continúa la tarea pendiente desde donde te quedaste.";
         public const int RetryMinutes = 10;
         public const int RetryHours = 6;
@@ -38,6 +38,7 @@ namespace Continuador
         public string CodexExecutable { get; set; }
         public string ClaudeExecutable { get; set; }
         public List<ConversationPreference> Conversations { get; set; }
+        public string LastUpdateNotificationVersion { get; set; }
     }
 
     [Serializable]
@@ -125,6 +126,16 @@ namespace Continuador
         public bool Success { get; set; }
         public bool Retryable { get; set; }
         public string Details { get; set; }
+    }
+
+    internal sealed class UpdateInfo
+    {
+        public string Version { get; set; }
+        public string Tag { get; set; }
+        public string ReleaseUrl { get; set; }
+        public string InstallerUrl { get; set; }
+        public string InstallerDigest { get; set; }
+        public bool IsNewer { get; set; }
     }
 
     internal sealed class WindowSnapshot

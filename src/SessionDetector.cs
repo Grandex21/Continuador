@@ -387,46 +387,13 @@ namespace Continuador
                 {
                     string line;
                     int count = 0;
-                    while ((line = reader.ReadLine()) != null)
+                    while (count < 400 && (line = reader.ReadLine()) != null)
                     {
                         count++;
-                        bool possibleTitle = line.IndexOf("\"custom-title\"", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            line.IndexOf("\"agent-name\"", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            line.IndexOf("\"ai-title\"", StringComparison.OrdinalIgnoreCase) >= 0;
-                        if (count > 400 && !possibleTitle) continue;
-                        IDictionary root = Serializer.DeserializeObject(line) as IDictionary;
-                        if (root == null)
-                        {
-                            continue;
-                        }
-                        string value = GetString(root, "sessionId");
-                        if (string.IsNullOrWhiteSpace(value)) value = GetString(root, "session_id");
-                        if (!string.IsNullOrWhiteSpace(value)) session = value;
-                        if (string.IsNullOrWhiteSpace(cwd)) cwd = GetString(root, "cwd");
-                        string type = GetString(root, "type");
-                        if (string.Equals(type, "custom-title", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string valueTitle = GetString(root, "customTitle");
-                            if (!string.IsNullOrWhiteSpace(valueTitle)) customTitle = valueTitle;
-                        }
-                        else if (string.Equals(type, "agent-name", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(customTitle))
-                        {
-                            string valueTitle = GetString(root, "agentName");
-                            if (!string.IsNullOrWhiteSpace(valueTitle)) customTitle = valueTitle;
-                        }
-                        else if (string.Equals(type, "ai-title", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string valueTitle = GetString(root, "aiTitle");
-                            if (!string.IsNullOrWhiteSpace(valueTitle)) aiTitle = valueTitle;
-                        }
-                        if (firstPrompt == null && string.Equals(type, "user", StringComparison.OrdinalIgnoreCase))
-                        {
-                            IDictionary message = root["message"] as IDictionary;
-                            string text = message == null ? ExtractText(root["content"]) : ExtractText(message["content"]);
-                            firstPrompt = CleanTitle(text);
-                        }
+                        ParseClaudeLine(line, false, ref session, ref cwd, ref firstPrompt, ref customTitle, ref aiTitle);
                     }
                 }
+                ReadClaudeTailTitles(file.FullName, ref session, ref cwd, ref firstPrompt, ref customTitle, ref aiTitle);
             }
             catch
             {
@@ -454,6 +421,68 @@ namespace Continuador
                 IsActive = IsFileActive(file.FullName),
                 FilePath = file.FullName
             };
+        }
+
+        private static void ReadClaudeTailTitles(string path, ref string session, ref string cwd, ref string firstPrompt,
+            ref string customTitle, ref string aiTitle)
+        {
+            const int TailBytes = 256 * 1024;
+            using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                long start = Math.Max(0, stream.Length - TailBytes);
+                stream.Seek(start, SeekOrigin.Begin);
+                using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true, 4096))
+                {
+                    if (start > 0) reader.ReadLine();
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (line.IndexOf("\"custom-title\"", StringComparison.OrdinalIgnoreCase) < 0 &&
+                            line.IndexOf("\"agent-name\"", StringComparison.OrdinalIgnoreCase) < 0 &&
+                            line.IndexOf("\"ai-title\"", StringComparison.OrdinalIgnoreCase) < 0)
+                        {
+                            continue;
+                        }
+                        ParseClaudeLine(line, true, ref session, ref cwd, ref firstPrompt, ref customTitle, ref aiTitle);
+                    }
+                }
+            }
+        }
+
+        private static void ParseClaudeLine(string line, bool titlesOnly, ref string session, ref string cwd,
+            ref string firstPrompt, ref string customTitle, ref string aiTitle)
+        {
+            IDictionary root = Serializer.DeserializeObject(line) as IDictionary;
+            if (root == null) return;
+            if (!titlesOnly)
+            {
+                string value = GetString(root, "sessionId");
+                if (string.IsNullOrWhiteSpace(value)) value = GetString(root, "session_id");
+                if (!string.IsNullOrWhiteSpace(value)) session = value;
+                if (string.IsNullOrWhiteSpace(cwd)) cwd = GetString(root, "cwd");
+            }
+            string type = GetString(root, "type");
+            if (string.Equals(type, "custom-title", StringComparison.OrdinalIgnoreCase))
+            {
+                string valueTitle = GetString(root, "customTitle");
+                if (!string.IsNullOrWhiteSpace(valueTitle)) customTitle = valueTitle;
+            }
+            else if (string.Equals(type, "agent-name", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(customTitle))
+            {
+                string valueTitle = GetString(root, "agentName");
+                if (!string.IsNullOrWhiteSpace(valueTitle)) customTitle = valueTitle;
+            }
+            else if (string.Equals(type, "ai-title", StringComparison.OrdinalIgnoreCase))
+            {
+                string valueTitle = GetString(root, "aiTitle");
+                if (!string.IsNullOrWhiteSpace(valueTitle)) aiTitle = valueTitle;
+            }
+            if (!titlesOnly && firstPrompt == null && string.Equals(type, "user", StringComparison.OrdinalIgnoreCase))
+            {
+                IDictionary message = root["message"] as IDictionary;
+                string text = message == null ? ExtractText(root["content"]) : ExtractText(message["content"]);
+                firstPrompt = CleanTitle(text);
+            }
         }
 
         private static Dictionary<string, string> ReadClaudeIndexedTitles(string projectsRoot)
