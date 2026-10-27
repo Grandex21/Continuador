@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $exe = Join-Path $root 'build\Continuador.exe'
+$worker = Join-Path $root 'build\ContinuadorWorker.exe'
 $setup = Join-Path $root 'build\Continuador-Setup.exe'
 $testRoot = Join-Path $root 'test-output'
 $data = Join-Path $testRoot 'data'
@@ -16,6 +17,72 @@ function Invoke-Continuador([string[]]$arguments) {
     if ($LASTEXITCODE -ne 0) { throw "Continuador devolvió $LASTEXITCODE`: $raw" }
     return ($raw | Out-String | ConvertFrom-Json)
 }
+
+function Get-PeSubsystem([string]$path) {
+    $stream = [IO.File]::OpenRead($path)
+    try {
+        $reader = New-Object IO.BinaryReader($stream)
+        $stream.Position = 0x3c
+        $peOffset = $reader.ReadInt32()
+        $stream.Position = $peOffset + 92
+        return $reader.ReadUInt16()
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+function Test-SilentWorkerScheduledTask {
+    $taskName = "Continuador - Prueba worker silencioso $PID"
+    $service = $null
+    $folder = $null
+    try {
+        $service = New-Object -ComObject 'Schedule.Service'
+        $service.Connect()
+        $folder = $service.GetFolder('\')
+        $definition = $service.NewTask(0)
+        $definition.RegistrationInfo.Description = 'Prueba automática del worker silencioso de Continuador.'
+        $definition.Settings.Enabled = $true
+        $definition.Settings.StartWhenAvailable = $true
+        $definition.Settings.ExecutionTimeLimit = 'PT1M'
+        $action = $definition.Actions.Create(0)
+        $action.Path = $worker
+        $action.Arguments = '--self-test'
+        $action.WorkingDirectory = Split-Path -Parent $worker
+        $folder.RegisterTaskDefinition($taskName, $definition, 6, $null, $null, 3, $null) | Out-Null
+
+        $forbiddenNames = @('cmd','powershell','pwsh','conhost')
+        $baseline = @{}
+        [Diagnostics.Process]::GetProcesses() | Where-Object { $_.ProcessName -in $forbiddenNames } |
+            ForEach-Object { $baseline[$_.Id] = $true }
+        $detected = New-Object Collections.Generic.HashSet[string]
+        $folder.GetTask("\$taskName").Run($null) | Out-Null
+
+        $deadline = [DateTime]::UtcNow.AddSeconds(20)
+        do {
+            [Diagnostics.Process]::GetProcesses() | Where-Object {
+                $_.ProcessName -in $forbiddenNames -and -not $baseline.ContainsKey($_.Id)
+            } | ForEach-Object { [void]$detected.Add("$($_.ProcessName).exe (PID $($_.Id))") }
+            Start-Sleep -Milliseconds 20
+            $registered = $folder.GetTask("\$taskName")
+        } while ($registered.State -eq 4 -and [DateTime]::UtcNow -lt $deadline)
+
+        Assert-True ($registered.State -ne 4) 'La tarea de prueba del worker debe finalizar.'
+        Assert-True ($registered.LastTaskResult -eq 0) 'El worker ejecutado por el Programador de tareas debe terminar con código 0.'
+        Assert-True ($detected.Count -eq 0) "El worker no debe iniciar procesos de consola. Detectados: $([string]::Join(', ', $detected))."
+    }
+    finally {
+        if ($folder -ne $null) {
+            try { $folder.DeleteTask($taskName, 0) } catch {}
+        }
+    }
+}
+
+Assert-True (Test-Path -LiteralPath $worker) 'La compilación debe producir ContinuadorWorker.exe.'
+Assert-True ((Get-PeSubsystem $worker) -eq 2) 'ContinuadorWorker.exe debe estar compilado como Windows GUI (WinExe), no como consola.'
+$workerProcess = Start-Process -FilePath $worker -ArgumentList '--self-test' -Wait -PassThru
+Assert-True ($workerProcess.ExitCode -eq 0) 'La autoprueba directa del worker debe terminar con código 0.'
+Test-SilentWorkerScheduledTask
 
 if (Test-Path -LiteralPath $testRoot) {
     Remove-Item -LiteralPath $testRoot -Recurse -Force
@@ -139,6 +206,24 @@ $favoriteConversation = $catalogWithPreference | Where-Object { $_.session -eq '
 Assert-True ($favoriteConversation.favorite -eq $true) 'Debe conservar conversaciones favoritas.'
 Assert-True ($favoriteConversation.title -eq 'Mi conversación favorita') 'Debe conservar nombres personalizados.'
 
+$fakeReleasePath = Join-Path $testRoot 'latest-release.json'
+$fakeRelease = [ordered]@{
+    tag_name = 'v9.9.9'
+    html_url = 'https://github.com/Grandex21/Continuador/releases/tag/v9.9.9'
+    assets = @([ordered]@{
+        name = 'Continuador-Setup.exe'
+        browser_download_url = 'https://example.invalid/Continuador-Setup.exe'
+        digest = 'sha256:0000000000000000000000000000000000000000000000000000000000000000'
+    })
+} | ConvertTo-Json -Depth 10 -Compress
+[IO.File]::WriteAllText($fakeReleasePath, $fakeRelease, (New-Object Text.UTF8Encoding($false)))
+$env:CONTINUADOR_UPDATE_API_URL = ([Uri]$fakeReleasePath).AbsoluteUri
+$updateCheck = Invoke-Continuador @('check-update','--json')
+Assert-True ($updateCheck.available -eq $true) 'Debe detectar una versión más reciente publicada.'
+Assert-True ($updateCheck.latest_version -eq '9.9.9') 'Debe normalizar la etiqueta de la versión publicada.'
+Assert-True ($updateCheck.installer_url -match 'Continuador-Setup.exe') 'Debe encontrar el instalador dentro de los assets de GitHub.'
+Remove-Item Env:CONTINUADOR_UPDATE_API_URL -ErrorAction SilentlyContinue
+
 $portableFixture = Join-Path $testRoot 'portable'
 New-Item -ItemType Directory -Force -Path $portableFixture | Out-Null
 Copy-Item -LiteralPath $exe -Destination $portableFixture
@@ -166,6 +251,7 @@ $installProcess = Start-Process -FilePath $setup -ArgumentList '/install-silent'
 Assert-True ($installProcess.ExitCode -eq 0) 'El instalador silencioso debe terminar correctamente.'
 $installedDir = Join-Path $installRoot 'AppData\Local\Programs\Continuador'
 Assert-True (Test-Path -LiteralPath (Join-Path $installedDir 'Continuador.exe')) 'El instalador debe desplegar la aplicación.'
+Assert-True (Test-Path -LiteralPath (Join-Path $installedDir 'ContinuadorWorker.exe')) 'El instalador debe desplegar el worker silencioso.'
 Assert-True (Test-Path -LiteralPath (Join-Path $codexHome 'skills\continuar-tarea\SKILL.md')) 'Debe instalar la skill de Codex.'
 Assert-True (Test-Path -LiteralPath (Join-Path $installRoot '.claude\skills\continuar-tarea\SKILL.md')) 'Debe instalar la skill de Claude.'
 $backup = Get-ChildItem -LiteralPath (Join-Path $codexHome 'skills') -Directory -Filter 'continuar-tarea.backup-*'

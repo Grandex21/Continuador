@@ -21,8 +21,11 @@ $commonReferences = @(
 $appSources = Get-ChildItem -LiteralPath (Join-Path $root 'src') -Filter '*.cs' |
     Sort-Object Name |
     ForEach-Object { $_.FullName }
-& $csc /nologo /target:exe /platform:anycpu /optimize+ "/win32icon:$build\Continuador.ico" "/out:$build\Continuador.exe" $commonReferences $appSources
+& $csc /nologo /target:exe /main:Continuador.Program /platform:anycpu /optimize+ "/win32icon:$build\Continuador.ico" "/out:$build\Continuador.exe" $commonReferences $appSources
 if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación de Continuador.exe.' }
+
+& $csc /nologo /target:winexe /main:Continuador.WorkerProgram /platform:anycpu /optimize+ "/win32icon:$build\Continuador.ico" "/out:$build\ContinuadorWorker.exe" $commonReferences $appSources
+if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación de ContinuadorWorker.exe.' }
 
 $setupArgs = @(
     '/nologo', '/target:winexe', '/platform:anycpu', '/optimize+',
@@ -31,6 +34,7 @@ $setupArgs = @(
     '/r:System.dll', '/r:System.Core.dll', '/r:System.Drawing.dll',
     '/r:System.Windows.Forms.dll', '/r:System.Web.Extensions.dll', '/r:Microsoft.CSharp.dll',
     "/resource:$build\Continuador.exe,Continuador.Payload.exe",
+    "/resource:$build\ContinuadorWorker.exe,Continuador.WorkerPayload.exe",
     "/resource:$root\skills\codex\SKILL.md,Continuador.CodexSkill.md",
     "/resource:$root\skills\claude\SKILL.md,Continuador.ClaudeSkill.md",
     "/resource:$root\installer\LEEME.txt,Continuador.Readme.txt",

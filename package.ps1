@@ -16,6 +16,7 @@ foreach ($stage in @($portableStage, $sourceStage)) {
 }
 
 Copy-Item -LiteralPath (Join-Path $build 'Continuador.exe') -Destination $portableStage
+Copy-Item -LiteralPath (Join-Path $build 'ContinuadorWorker.exe') -Destination $portableStage
 Copy-Item -LiteralPath (Join-Path $root 'installer\LEEME.txt') -Destination $portableStage
 Copy-Item -LiteralPath (Join-Path $root 'portable\LEEME-PORTABLE.txt') -Destination $portableStage
 Copy-Item -LiteralPath (Join-Path $root 'portable\Configurar-portable.ps1') -Destination $portableStage

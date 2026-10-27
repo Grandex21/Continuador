@@ -11,17 +11,20 @@ También puedes usar la [versión portátil](https://github.com/Grandex21/Contin
 
 Consulta [todas las versiones y archivos publicados](https://github.com/Grandex21/Continuador/releases/latest). Windows puede mostrar una advertencia de SmartScreen porque la aplicación todavía no tiene una firma comercial.
 
-La versión 1.3.2 incorpora una interfaz visual completamente renovada, títulos reales de los listados de Codex y Claude Code, además de búsqueda y filtros de conversaciones, favoritos,
-nombres personalizados, prueba de envío y revisión en segundo plano mediante
-el Programador de tareas de Windows.
+La versión 1.4.0 carga las conversaciones en segundo plano para mantener la interfaz fluida,
+mejora la detección y el respaldo por ventana de Claude Code y comprueba automáticamente
+si hay actualizaciones al iniciar y cada hora. También permite buscarlas manualmente desde
+la aplicación. El procesamiento periódico usa un worker `WinExe` independiente para que
+el Programador de tareas no abra una ventana de consola cada diez minutos.
 
 ## Componentes
 
-- `src/`: aplicación WinForms, bandeja, CLI, persistencia y adaptadores.
+- `src/`: aplicación WinForms, bandeja, CLI, worker silencioso, persistencia y adaptadores.
 - `installer/`: instalador/desinstalador por usuario con recursos incrustados.
 - `skills/`: integraciones personales para Codex y Claude Code.
 - `portable/`: configuración de la edición portátil.
-- `tests.ps1`: pruebas aisladas con dobles de `codex.exe` y `claude.exe`.
+- `tests.ps1`: pruebas aisladas con dobles de `codex.exe` y `claude.exe`, incluida una
+  ejecución real del worker mediante el Programador de tareas.
 
 ## Construcción
 
